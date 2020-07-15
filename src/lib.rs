@@ -5,11 +5,12 @@
 extern crate winapi;
 extern crate wio;
 
-use std::mem::zeroed;
 use std::{mem, ptr, slice};
+use std::mem::zeroed;
+
 use winapi::shared::dxgi::{
-    CreateDXGIFactory1, IDXGIAdapter, IDXGIAdapter1, IDXGIFactory1, IDXGIOutput, IDXGISurface1,
-    IID_IDXGIFactory1, DXGI_MAP_READ, DXGI_OUTPUT_DESC, DXGI_RESOURCE_PRIORITY_MAXIMUM,
+    CreateDXGIFactory1, DXGI_MAP_READ, DXGI_OUTPUT_DESC, DXGI_RESOURCE_PRIORITY_MAXIMUM, IDXGIAdapter, IDXGIAdapter1,
+    IDXGIFactory1, IDXGIOutput, IDXGISurface1, IID_IDXGIFactory1,
 };
 use winapi::shared::dxgi1_2::{IDXGIOutput1, IDXGIOutputDuplication};
 use winapi::shared::dxgitype::*;
@@ -175,6 +176,7 @@ struct DuplicatedOutput {
     output: ComPtr<IDXGIOutput1>,
     output_duplication: ComPtr<IDXGIOutputDuplication>,
 }
+
 impl DuplicatedOutput {
     fn get_desc(&self) -> DXGI_OUTPUT_DESC {
         unsafe {
@@ -243,6 +245,7 @@ pub struct DXGIManager {
     capture_source_index: usize,
     timeout_ms: u32,
 }
+
 impl DXGIManager {
     /// Construct a new manager with capture timeout
     pub fn new(timeout_ms: u32) -> Result<DXGIManager, &'static str> {
@@ -298,7 +301,7 @@ impl DXGIManager {
             let (d3d11_device, output_duplications) =
                 duplicate_outputs(d3d11_device, outputs).map_err(|_| ())?;
             if let Some((output_duplication, output)) =
-                get_capture_source(output_duplications, self.capture_source_index)
+            get_capture_source(output_duplications, self.capture_source_index)
             {
                 self.duplicated_output = Some(DuplicatedOutput {
                     device: d3d11_device,
@@ -318,7 +321,7 @@ impl DXGIManager {
                 Err(CaptureError::Fail("No valid duplicated output"))
             } else {
                 Err(CaptureError::RefreshFailure)
-            }
+            };
         }
 
         let timeout_ms = self.timeout_ms;
@@ -377,32 +380,39 @@ impl DXGIManager {
         };
         let map_pitch_n_pixels = mapped_surface.Pitch as usize / mem::size_of::<BGRA8>() as usize;
         let mut pixel_buf = Vec::with_capacity(output_width * output_height);
-        let pixel_index: Box<dyn Fn(usize, usize) -> usize> = match output_desc.Rotation {
-            DXGI_MODE_ROTATION_IDENTITY | DXGI_MODE_ROTATION_UNSPECIFIED => {
-                Box::new(|row, col| row * map_pitch_n_pixels + col)
-            }
-            DXGI_MODE_ROTATION_ROTATE90 => {
-                Box::new(|row, col| (output_width - 1 - col) * map_pitch_n_pixels + row)
-            }
-            DXGI_MODE_ROTATION_ROTATE180 => Box::new(|row, col| {
-                (output_height - 1 - row) * map_pitch_n_pixels + (output_width - col - 1)
-            }),
-            DXGI_MODE_ROTATION_ROTATE270 => {
-                Box::new(|row, col| col * map_pitch_n_pixels + (output_height - row - 1))
-            }
-            n => unreachable!("Undefined DXGI_MODE_ROTATION: {}", n),
-        };
         let mapped_pixels = unsafe {
             slice::from_raw_parts(
                 mapped_surface.pBits as *mut BGRA8,
                 output_width * output_height,
             )
         };
-        for row in 0..output_height {
-            for col in 0..output_width {
-                pixel_buf.push(mapped_pixels[pixel_index(row, col)]);
+
+        match output_desc.Rotation {
+            DXGI_MODE_ROTATION_IDENTITY | DXGI_MODE_ROTATION_UNSPECIFIED => {
+                pixel_buf.extend_from_slice(mapped_pixels);
             }
+            DXGI_MODE_ROTATION_ROTATE90 => {
+                for row in 0..output_height {
+                    for col in 0..output_width {
+                        let pixel_index = (output_width - 1 - col) * map_pitch_n_pixels + row;
+                        pixel_buf.push(mapped_pixels[pixel_index]);
+                    }
+                }
+            }
+            DXGI_MODE_ROTATION_ROTATE180 => {
+                pixel_buf.extend(mapped_pixels.iter().rev());
+            }
+            DXGI_MODE_ROTATION_ROTATE270 => {
+                for row in 0..output_height {
+                    for col in 0..output_width {
+                        let pixel_index = col * map_pitch_n_pixels + (output_height - row - 1);
+                        pixel_buf.push(mapped_pixels[pixel_index]);
+                    }
+                }
+            }
+            n => unreachable!("Undefined DXGI_MODE_ROTATION: {}", n),
         }
+
         unsafe { frame_surface.Unmap() };
         Ok((pixel_buf, (output_width, output_height)))
     }
