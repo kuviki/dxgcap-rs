@@ -409,7 +409,7 @@ impl DXGIManager {
 }
 
 #[test]
-fn test() {
+fn test_capture_frame() {
     let mut manager = DXGIManager::new(300).unwrap();
     for _ in 0..100 {
         match manager.capture_frame() {
@@ -423,4 +423,28 @@ fn test() {
             Err(e) => println!("error: {:?}", e),
         }
     }
+}
+
+#[test]
+fn test_capture_frame_output() {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    let mut manager = DXGIManager::new(300).unwrap();
+    manager.capture_frame().unwrap();
+    let (frame, (width, height)) = manager.capture_frame().unwrap();
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open("screenshot.ppm")
+        .unwrap();
+
+    let mut data = Vec::new();
+
+    write!(&mut data, "P6 {} {} 255\n", width, height).unwrap();
+    data.extend(frame.iter()
+        .flat_map(|p| vec![p.r, p.g, p.b]));
+
+    file.write_all(&data).unwrap();
 }
