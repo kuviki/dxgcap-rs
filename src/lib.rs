@@ -249,7 +249,7 @@ impl DXGIManager {
         let mut manager = DXGIManager {
             duplicated_output: None,
             capture_source_index: 0,
-            timeout_ms: timeout_ms,
+            timeout_ms,
         };
 
         match manager.acquire_output_duplication() {
@@ -302,9 +302,9 @@ impl DXGIManager {
             {
                 self.duplicated_output = Some(DuplicatedOutput {
                     device: d3d11_device,
-                    device_context: device_context,
-                    output: output,
-                    output_duplication: output_duplication,
+                    device_context,
+                    output,
+                    output_duplication,
                 });
                 return Ok(());
             }
@@ -313,13 +313,14 @@ impl DXGIManager {
     }
 
     fn capture_frame_to_surface(&mut self) -> Result<ComPtr<IDXGISurface1>, CaptureError> {
-        if let None = self.duplicated_output {
-            if let Ok(_) = self.acquire_output_duplication() {
-                return Err(CaptureError::Fail("No valid duplicated output"));
+        if self.duplicated_output.is_none() {
+            return if self.acquire_output_duplication().is_ok() {
+                Err(CaptureError::Fail("No valid duplicated output"))
             } else {
-                return Err(CaptureError::RefreshFailure);
+                Err(CaptureError::RefreshFailure)
             }
         }
+
         let timeout_ms = self.timeout_ms;
         match self
             .duplicated_output
