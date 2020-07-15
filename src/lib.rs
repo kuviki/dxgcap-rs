@@ -395,7 +395,7 @@ impl DXGIManager {
         let mapped_pixels = unsafe {
             slice::from_raw_parts(
                 mapped_surface.pBits as *mut BGRA8,
-                output_width * output_height * map_pitch_n_pixels,
+                output_width * output_height,
             )
         };
         for row in 0..output_height {
